@@ -1,6 +1,69 @@
 # Amzur Chatbot App
 
+[![Repo](https://img.shields.io/badge/repo-amzur_chatbot_app-0A66C2?logo=github)](https://github.com/baluchebolu1975/amzur_chatbot_app)
+[![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/frontend-React%2019-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/bundler-Vite-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Postgres](https://img.shields.io/badge/database-PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Last Commit](https://img.shields.io/github/last-commit/baluchebolu1975/amzur_chatbot_app)](https://github.com/baluchebolu1975/amzur_chatbot_app/commits/main)
+
 Amzur Chatbot App is a full-stack conversational AI platform with secure authentication, persistent chat threads, Google OAuth login, and streaming assistant responses.
+
+## Repo Landing Page
+
+Production-ready internal chatbot platform focused on secure auth, persistent threads, and LiteLLM-routed AI responses.
+
+### Quick Navigation
+
+- [Highlights](#highlights)
+- [Architecture Diagram](#architecture-diagram)
+- [Local Setup](#local-setup)
+- [Authentication Flow](#authentication-flow)
+- [Chat Features](#chat-features)
+- [Troubleshooting](#common-troubleshooting)
+
+### Primary Entry Points
+
+- Backend App: [backend/app/main.py](backend/app/main.py)
+- API Routes: [backend/app/api/router.py](backend/app/api/router.py)
+- Chat Service: [backend/app/services/chat_service.py](backend/app/services/chat_service.py)
+- Frontend Bootstrap: [frontend/src/main.tsx](frontend/src/main.tsx)
+- Chat Page: [frontend/src/pages/ChatPage.tsx](frontend/src/pages/ChatPage.tsx)
+
+## Architecture Diagram
+
+```mermaid
+flowchart LR
+	U[User Browser] --> FE[React + Vite Frontend]
+	FE -->|HTTP + Cookie| API[FastAPI Backend]
+	FE -->|Google OAuth| GOOG[Google Identity]
+	GOOG -->|id_token| API
+
+	API --> AUTH[Auth Service]
+	API --> CHAT[Chat Service]
+	AUTH --> SEC[JWT + bcrypt Security]
+	CHAT --> DB[(PostgreSQL)]
+	CHAT -->|streaming| SSE[SSE Response]
+
+	CHAT --> LLM[LiteLLM Proxy]
+	LLM --> MODEL[LLM Model]
+
+	API --> ALEM[Alembic Migrations]
+	ALEM --> DB
+```
+
+### Request Lifecycle (Chat)
+
+1. User sends a prompt from frontend chat UI.
+2. Frontend calls chat endpoint with auth cookie.
+3. Backend validates JWT and resolves current user.
+4. Chat service loads thread history from PostgreSQL.
+5. For new threads, title auto-updates from first user message.
+6. Prompt + history are sent to LiteLLM for model completion.
+7. Tokens stream back via SSE and are persisted to database.
+8. Frontend refreshes thread and message state.
 
 ## Highlights
 
@@ -194,16 +257,16 @@ Google Cloud setup must include authorized JavaScript origins such as:
 
 ### Thread APIs
 
-- POST /api/chat/threads                -> Create thread
-- GET /api/chat/threads                 -> List user threads
-- GET /api/chat/threads/{thread_id}     -> Fetch thread with messages
-- PATCH /api/chat/threads/{thread_id}   -> Rename thread
-- DELETE /api/chat/threads/{thread_id}  -> Delete thread
+- POST /api/chat/threads -> Create thread
+- GET /api/chat/threads -> List user threads
+- GET /api/chat/threads/{thread_id} -> Fetch thread with messages
+- PATCH /api/chat/threads/{thread_id} -> Rename thread
+- DELETE /api/chat/threads/{thread_id} -> Delete thread
 
 ### Message APIs
 
-- POST /api/chat/messages               -> Non-streaming response
-- POST /api/chat/messages/stream        -> Streaming SSE response
+- POST /api/chat/messages -> Non-streaming response
+- POST /api/chat/messages/stream -> Streaming SSE response
 
 ### Auto title behavior
 
