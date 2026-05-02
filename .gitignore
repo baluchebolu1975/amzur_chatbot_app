@@ -1,0 +1,36 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Node
+node_modules/
+dist/
+
+# Local environments and secrets
+.env
+**/.env
+.venv/
+**/.venv/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime/data folders
+uploads/
+chroma_db/
+
+# Misc
+coverage/
+.pytest_cache/
+.mypy_cache/

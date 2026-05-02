@@ -1,0 +1,21 @@
+# Virtual environment
+.venv/
+
+# Environment variables — NEVER commit this
+.env
+
+# ChromaDB index files
+chroma_db/
+
+# Service account keys
+*.json
+!package.json
+!tsconfig.json
+!*.config.json
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Uploads
+uploads/
