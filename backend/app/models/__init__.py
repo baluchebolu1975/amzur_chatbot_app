@@ -1,5 +1,6 @@
 from app.models.message import Message
+from app.models.rag_document import RagDocument
 from app.models.thread import Thread
 from app.models.user import User
 
-__all__ = ["User", "Thread", "Message"]
+__all__ = ["User", "Thread", "Message", "RagDocument"]

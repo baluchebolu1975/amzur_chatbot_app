@@ -1,0 +1,154 @@
+AMZUR CHATBOT — PROJECT PROMPTS (P4 TO P8)
+Date: 2026-05-04
+Execution Rule: DO NOT BUILD ANYTHING WITHOUT USER APPROVAL.
+
+====================================================================
+PROJECT 4 — MEMORY WINDOW
+====================================================================
+1) CONTEXT
+- Existing app already has users, threads, and messages with persistent chat.
+- Every chat must remember the previous 5 conversations in the same chat before answering.
+- No disruptive changes to existing auth/chat flows.
+
+2) GOAL
+- Implement fixed memory retrieval and context injection for chat generation.
+- Before every answer, include the previous 5 conversations from the same chat thread as context.
+
+3) RULES
+- Keep backward compatibility with all existing chat endpoints.
+- Additive changes only; avoid breaking schema unless strictly required.
+- Use a fixed memory size of 5 previous conversations only.
+- Do not introduce user-facing memory mode selection for Project 4.
+- A conversation means one prior user message plus its assistant reply in the same thread.
+- If fewer than 5 prior conversations exist, use all available prior conversations.
+- Enforce token budget before LLM call.
+- Validate thread ownership and authorization.
+- Add tests for retrieval logic and edge cases.
+
+4) OUTPUT
+- Backend service: previous-5-conversations selector + prompt context assembler.
+- API integration that injects the last 5 conversations before each answer.
+- Integration into message generation pipeline.
+- No frontend control required for Project 4 unless needed only for display/debugging.
+- Unit + integration tests.
+- Acceptance proof: run test output + sample request/response.
+
+
+====================================================================
+PROJECT 5 — ATTACHMENTS
+====================================================================
+1) CONTEXT
+- Current chat is text-first; user needs file-assisted conversations.
+- Required formats include PDF, image, and spreadsheet-ready parsing.
+- Upload limits and secure file handling are mandatory.
+
+2) GOAL
+- Add attachment upload, metadata persistence, extraction pipeline, and chat grounding using extracted text.
+
+3) RULES
+- Supported file types only (strict allowlist).
+- Enforce max size and reject invalid MIME/extension mismatch.
+- Store files in structured path per thread/user.
+- Save metadata and extracted content references.
+- Protect from path traversal and unsafe filenames.
+- If extraction fails, fail gracefully with actionable error.
+- Do not block normal text-only chat usage.
+
+4) OUTPUT
+- DB model/migration for attachments metadata.
+- Upload API + extraction service + parser routing by file type.
+- Frontend upload UI + preview indicators + status states.
+- Chat context augmentation from extracted content.
+- Tests for upload validation, parsing success/failure, and permissions.
+- Acceptance proof: upload sample file and show grounded response.
+
+
+====================================================================
+PROJECT 6 — IMAGE GENERATION
+====================================================================
+1) CONTEXT
+- Need image generation via configured model route while preserving existing chat UX.
+- Must integrate safely with existing LLM orchestration.
+
+2) GOAL
+- Add image generation request path in chat and return generated image artifacts with metadata.
+
+3) RULES
+- Use configured model endpoints only.
+- Validate prompt size and sanitize unsafe input patterns.
+- Persist generated image references and map to thread/message.
+- Keep text response behavior unchanged when image generation is not requested.
+- Add retry/timeouts and clear error messaging.
+
+4) OUTPUT
+- Service for image generation orchestration.
+- API endpoint(s) for generation and retrieval metadata.
+- Frontend rendering for generated images in chat timeline.
+- Logging/telemetry for generation latency and failures.
+- Tests for happy path, timeout, and invalid prompt cases.
+- Acceptance proof: one successful generation and one controlled failure scenario.
+
+
+====================================================================
+PROJECT 7 — RAG PIPELINE
+====================================================================
+1) CONTEXT
+- Need retrieval-augmented responses from uploaded/managed knowledge sources.
+- ChromaDB and embedding dependencies are already installed.
+
+2) GOAL
+- Implement ingestion, chunking, embedding, indexing, retrieval, and response grounding.
+
+3) RULES
+- Deterministic chunk strategy (size + overlap configurable).
+- Track source document metadata and chunk lineage.
+- Retrieval must include top-k + optional rerank.
+- Inject citations/sources in final response format.
+- Respect token budget and fallback when retrieval is empty.
+- Ensure idempotent re-indexing behavior.
+
+4) OUTPUT
+- RAG ingestion pipeline service.
+- Vector store management utilities.
+- Retrieval + context composer integrated into chat flow.
+- Admin/user controls for indexing status.
+- Tests for ingestion, retrieval precision basics, and no-result fallback.
+- Acceptance proof: query answered with cited source chunks.
+
+
+====================================================================
+PROJECT 8 — NL-TO-SQL
+====================================================================
+1) CONTEXT
+- Need natural-language questions converted to safe SQL on approved schemas/tables.
+- Must avoid unsafe execution and protect data boundaries.
+
+2) GOAL
+- Implement NL-to-SQL generation, SQL validation, guarded execution, and result presentation in chat.
+
+3) RULES
+- Read-only SQL unless explicitly approved otherwise.
+- Enforce table/column allowlist.
+- Block dangerous statements and multi-statement chains.
+- Apply row limits and execution timeout.
+- Return explainable output: generated SQL + summarized result.
+- Log query attempts and validation outcomes.
+
+4) OUTPUT
+- NL-to-SQL service (prompting + validation + execution layers).
+- API endpoint for NL query requests.
+- Frontend result table rendering with query transparency.
+- Tests for valid query, blocked query, malformed query, timeout case.
+- Acceptance proof: at least 3 representative NL questions with outputs.
+
+
+====================================================================
+GLOBAL EXECUTION PROTOCOL (MANDATORY)
+====================================================================
+- Execute one project at a time only.
+- After each project:
+  1) Show working output.
+  2) Wait for user review and approval.
+  3) Proceed only after explicit approval.
+- No implementation starts without explicit user approval.
+- No hallucinations, no fabricated results, no false-positive readiness claims.

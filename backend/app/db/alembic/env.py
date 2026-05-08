@@ -7,7 +7,7 @@ from sqlalchemy import pool
 from app.core.config import get_settings
 from app.db.base import Base
 from app.db.session import build_sync_db_url
-from app.models import message, thread, user  # noqa: F401
+from app.models import message, rag_document, thread, user  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

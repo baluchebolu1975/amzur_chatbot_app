@@ -10,10 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.ai.llm import get_openai_client
+from app.ai.memory.memory_window_service import MemoryWindowService
 from app.core.config import get_settings
 from app.models.message import Message
 from app.models.thread import Thread
 from app.models.user import User
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 settings = get_settings()
 DEFAULT_THREAD_TITLES = {"new chat", "new thread", "untitled", ""}
@@ -88,7 +92,11 @@ async def get_thread_details(db: AsyncSession, user: User, thread_id: str) -> di
 
 
 async def stream_chat_response(
-    db: AsyncSession, user: User, thread_id: str, user_message: str
+    db: AsyncSession,
+    user: User,
+    thread_id: str,
+    user_message: str,
+    attachment_context: str | None = None,
 ) -> AsyncGenerator[str, None]:
     try:
         thread_uuid = UUID(thread_id)
@@ -114,7 +122,37 @@ async def stream_chat_response(
     await db.flush()
 
     messages = [{"role": msg.role, "content": msg.content} for msg in history]
-    messages.append({"role": "user", "content": user_message})
+    effective_user_message = user_message
+    if attachment_context:
+        effective_user_message = f"{user_message}\n\n{attachment_context}"
+    messages.append({"role": "user", "content": effective_user_message})
+
+    # ============ PROJECT 4: MEMORY WINDOW INTEGRATION ============
+    # Retrieve last 5 conversations and inject into system prompt
+    memory_service = MemoryWindowService(session=db)
+    memory_context = await memory_service.retrieve_conversation_context(str(thread.id))
+    
+    logger.info(
+        "memory_window_injected",
+        thread_id=str(thread.id),
+        prior_conversations=memory_context["conversation_count"],
+        token_estimate=memory_context["tokens_estimate"]
+    )
+    
+    # Prepend memory context to system prompt if prior conversations exist
+    if memory_context["conversation_count"] > 0:
+        memory_system_msg = {
+            "role": "system",
+            "content": f"CONVERSATION MEMORY:\n\n{memory_context['formatted_context']}\n\nNow continue the conversation naturally based on the history above."
+        }
+        # Insert after first system message if it exists
+        if messages and messages[0].get("role") == "system":
+            messages.insert(1, memory_system_msg)
+        else:
+            messages.insert(0, memory_system_msg)
+        
+        logger.debug("memory_context_prepended", thread_id=str(thread.id))
+    # ============ END PROJECT 4 INTEGRATION ============
 
     client = get_openai_client()
     assistant_parts: list[str] = []
@@ -159,10 +197,22 @@ async def stream_chat_response(
     yield "event: done\ndata: [DONE]\n\n"
 
 
-async def send_chat_and_persist(db: AsyncSession, user: User, thread_id: str, user_message: str) -> dict:
+async def send_chat_and_persist(
+    db: AsyncSession,
+    user: User,
+    thread_id: str,
+    user_message: str,
+    attachment_context: str | None = None,
+) -> dict:
     # Non-streaming fallback endpoint for clients that cannot consume streaming.
     chunks: list[str] = []
-    async for chunk in stream_chat_response(db, user, thread_id, user_message):
+    async for chunk in stream_chat_response(
+        db,
+        user,
+        thread_id,
+        user_message,
+        attachment_context=attachment_context,
+    ):
         chunks.append(chunk)
 
     details = await get_thread_details(db, user, thread_id)

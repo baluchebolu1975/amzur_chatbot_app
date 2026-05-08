@@ -22,3 +22,4 @@ class User(Base):
     )
 
     threads = relationship("Thread", back_populates="user", cascade="all, delete-orphan")
+    rag_documents = relationship("RagDocument", back_populates="user", cascade="all, delete-orphan")

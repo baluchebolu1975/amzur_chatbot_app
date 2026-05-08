@@ -84,20 +84,10 @@ export async function sendMessage(
   return parseWithSchema(chatResponseSchema, response.data);
 }
 
-export async function streamMessage(
-  threadId: string,
-  message: string,
+async function consumeSseResponse(
+  response: Response,
   onChunk: (chunk: string) => void,
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/chat/messages/stream`, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ thread_id: threadId, message }),
-  });
-
   if (!response.ok || !response.body) {
     throw new Error("Streaming failed");
   }
@@ -133,6 +123,49 @@ export async function streamMessage(
   }
 }
 
+export async function streamMessage(
+  threadId: string,
+  message: string,
+  onChunk: (chunk: string) => void,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/chat/messages/stream`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ thread_id: threadId, message }),
+  });
+
+  await consumeSseResponse(response, onChunk);
+}
+
+export async function streamMessageWithAttachments(
+  threadId: string,
+  message: string,
+  attachments: File[],
+  onChunk: (chunk: string) => void,
+): Promise<void> {
+  const formData = new FormData();
+  formData.append("thread_id", threadId);
+  formData.append("message", message);
+
+  for (const file of attachments) {
+    formData.append("attachments", file);
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/chat/messages/stream-with-attachments`,
+    {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    },
+  );
+
+  await consumeSseResponse(response, onChunk);
+}
+
 export async function updateThreadTitle(
   threadId: string,
   newTitle: string,
@@ -145,4 +178,78 @@ export async function updateThreadTitle(
 
 export async function deleteThread(threadId: string): Promise<void> {
   await api.delete(`/chat/threads/${threadId}`);
+}
+
+export async function generateImage(
+  prompt: string,
+  threadId?: string,
+): Promise<{ url: string; prompt: string; model: string }> {
+  const response = await api.post("/chat/images/generate", {
+    prompt,
+    thread_id: threadId,
+  });
+  return response.data;
+}
+
+// ─── RAG (PDF Chat) ────────────────────────────────────────────────────────
+
+export interface RagDocument {
+  id: string;
+  filename: string;
+  chunk_count: number;
+  status: "ready" | "processing" | "failed";
+  error_message: string | null;
+  created_at: string;
+}
+
+export async function uploadRagDocument(file: File): Promise<RagDocument> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await api.post("/rag/documents", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data as RagDocument;
+}
+
+export async function listRagDocuments(): Promise<RagDocument[]> {
+  const response = await api.get("/rag/documents");
+  return response.data as RagDocument[];
+}
+
+export async function deleteRagDocument(docId: string): Promise<void> {
+  await api.delete(`/rag/documents/${docId}`);
+}
+
+export async function streamRagAnswer(
+  docId: string,
+  question: string,
+  conversationHistory: Array<{ role: string; content: string }>,
+  onChunk: (chunk: string) => void,
+  threadId?: string,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/rag/chat/${docId}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question,
+      thread_id: threadId,
+      conversation_history: conversationHistory,
+    }),
+  });
+
+  if (!response.ok || !response.body) {
+    const errorText = await response.text().catch(() => "Unknown error");
+    throw new Error(`RAG chat failed: ${response.status} ${errorText}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    if (chunk) onChunk(chunk);
+  }
 }
