@@ -76,6 +76,28 @@ flowchart LR
 - Thread CRUD support (create, list, rename, delete)
 - Auto thread title generation from the first user message in a new chat
 
+## Project Status (P1-P8)
+
+- P1: Core full-stack scaffold (FastAPI + React + DB connectivity)
+- P2: Authentication and session flow (email/password + cookie auth)
+- P3: Chat threads, message persistence, and streaming chat responses
+- P4: Memory window integration and conversation continuity controls
+- P5: Attachment support with analysis for image/video/table/code/formula files
+- P6: Image generation flow with base64 persistence in chat history
+- P7: RAG document upload, indexing, and grounded document chat
+- P8: DB Insights (natural language to SQL) with user-scoped safe query execution
+
+### P8 Enhancements Included
+
+- Dynamic schema discovery across public Supabase tables
+- SQL validation and guardrails (SELECT-only + scoped filters)
+- Thread-aware DB Insights queries
+- Persisted DB Insights chat output containing:
+	- Natural language answer
+	- SQL query block
+	- SQL result preview
+- Frontend DB Insights result rendering in HTML table format
+
 ## Tech Stack
 
 ### Backend

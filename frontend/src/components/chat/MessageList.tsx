@@ -105,9 +105,10 @@ export function MessageList({
         const dataUrl = extractDataUrlFromMarkdown(message.content);
         const isImage = isDataImage(message.content);
         const dbResultTable = parseDbResultTable(message.content);
-        const displayContent = isImage && dataUrl
-          ? dataUrl
-          : dbResultTable?.displayContent ?? message.content;
+        const displayContent =
+          isImage && dataUrl
+            ? dataUrl
+            : (dbResultTable?.displayContent ?? message.content);
         const tableColumns = dbResultTable
           ? Array.from(
               new Set(dbResultTable.rows.flatMap((row) => Object.keys(row))),
@@ -158,7 +159,10 @@ export function MessageList({
                         </thead>
                         <tbody>
                           {dbResultTable.rows.map((row, rowIndex) => (
-                            <tr key={rowIndex} className="odd:bg-white even:bg-slate-50">
+                            <tr
+                              key={rowIndex}
+                              className="odd:bg-white even:bg-slate-50"
+                            >
                               {tableColumns.map((column) => (
                                 <td
                                   key={`${rowIndex}-${column}`}
