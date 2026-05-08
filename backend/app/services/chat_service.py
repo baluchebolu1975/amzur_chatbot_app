@@ -21,6 +21,20 @@ logger = structlog.get_logger(__name__)
 
 settings = get_settings()
 DEFAULT_THREAD_TITLES = {"new chat", "new thread", "untitled", ""}
+IMAGE_MARKDOWN_PREFIX = "![Generated image](data:image/"
+MAX_HISTORY_MESSAGE_CHARS = 8000
+
+
+def _is_generated_image_message(content: str) -> bool:
+    text = (content or "").strip()
+    return text.startswith(IMAGE_MARKDOWN_PREFIX) or text.startswith("data:image/")
+
+
+def _sanitize_history_content(content: str) -> str:
+    text = (content or "").strip()
+    if len(text) <= MAX_HISTORY_MESSAGE_CHARS:
+        return text
+    return text[:MAX_HISTORY_MESSAGE_CHARS]
 
 
 def _derive_thread_title_from_message(message: str) -> str:
@@ -121,7 +135,15 @@ async def stream_chat_response(
     db.add(Message(thread_id=thread.id, role="user", content=user_message))
     await db.flush()
 
-    messages = [{"role": msg.role, "content": msg.content} for msg in history]
+    messages: list[dict] = []
+    for msg in history:
+        if _is_generated_image_message(msg.content):
+            # Keep image history in DB/UI, but never inject base64 payloads into LLM context.
+            continue
+        sanitized = _sanitize_history_content(msg.content)
+        if not sanitized:
+            continue
+        messages.append({"role": msg.role, "content": sanitized})
     effective_user_message = user_message
     if attachment_context:
         effective_user_message = f"{user_message}\n\n{attachment_context}"

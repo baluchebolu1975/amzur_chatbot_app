@@ -17,6 +17,12 @@ import structlog
 from app.models.message import Message
 
 logger = structlog.get_logger(__name__)
+IMAGE_MARKDOWN_PREFIX = "![Generated image](data:image/"
+
+
+def _is_generated_image_message(content: str) -> bool:
+    text = (content or "").strip()
+    return text.startswith(IMAGE_MARKDOWN_PREFIX) or text.startswith("data:image/")
 
 
 class MemoryWindowService:
@@ -70,6 +76,9 @@ class MemoryWindowService:
             
             result = await self.session.execute(stmt)
             messages = result.scalars().all()
+
+            # Never include generated image/base64 payload messages in conversation memory.
+            messages = [m for m in messages if not _is_generated_image_message(m.content)]
             
             # Reverse to get chronological order (oldest first)
             messages = list(reversed(messages))

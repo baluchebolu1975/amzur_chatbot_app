@@ -7,12 +7,13 @@ import { MessageList } from "../components/chat/MessageList";
 import { ThreadSidebar } from "../components/chat/ThreadSidebar";
 import { useAuthActions, useMe } from "../hooks/useAuth";
 import {
+  askDatabaseQuestion,
   createThread,
   generateImage,
   getThread,
   listRagDocuments,
   listThreads,
-  streamMessage,
+  sendMessage,
   streamMessageWithAttachments,
   streamRagAnswer,
   uploadRagDocument,
@@ -45,7 +46,12 @@ export default function ChatPage() {
 
   const threadQuery = useQuery({
     queryKey: ["thread", activeThreadId],
-    queryFn: () => getThread(activeThreadId as string),
+    queryFn: async () => {
+      if (!activeThreadId) {
+        throw new Error("Thread id is required");
+      }
+      return getThread(activeThreadId);
+    },
     enabled: Boolean(activeThreadId),
   });
 
@@ -93,16 +99,18 @@ export default function ChatPage() {
     [threadQuery.data?.messages],
   );
 
-  const lightweightHistory = useMemo(
-    () =>
-      messages
-        .filter(
-          (msg) => !msg.content.startsWith("![Generated image](data:image"),
-        )
-        .filter((msg) => msg.content.length < 5000)
-        .slice(-10)
-        .map((msg) => ({ role: msg.role, content: msg.content })),
-    [messages],
+  const handleModeChange = useCallback((nextMode: PromptMode) => {
+    setMode(nextMode);
+    setStreamingText("");
+    setSendError(null);
+  }, []);
+
+  const handleUploadRag = useCallback(
+    async (file: File) => {
+      setSendError(null);
+      await uploadRagMutation.mutateAsync(file);
+    },
+    [uploadRagMutation],
   );
 
   const sendThroughMode = useCallback(
@@ -128,16 +136,17 @@ export default function ChatPage() {
           return;
         }
 
-        setStreamingText("");
-        await streamMessage(threadId, message, (chunk) => {
-          setStreamingText((prev) => prev + chunk);
-        });
-        setStreamingText("");
+        await sendMessage(threadId, message);
         return;
       }
 
       if (promptMode === "image") {
         await generateImage(message, threadId);
+        return;
+      }
+
+      if (promptMode === "db") {
+        await askDatabaseQuestion(message, threadId);
         return;
       }
 
@@ -148,7 +157,7 @@ export default function ChatPage() {
       await streamRagAnswer(
         ragDocId,
         message,
-        lightweightHistory,
+        [],
         (chunk) => {
           setStreamingText((prev) => prev + chunk);
         },
@@ -156,25 +165,16 @@ export default function ChatPage() {
       );
       setStreamingText("");
     },
-    [lightweightHistory],
-  );
-
-  if (meLoading) {
-    return (
-      <div className="grid min-h-screen place-items-center">Loading...</div>
-    );
-  }
-
-  const handleUploadRag = useCallback(
-    async (file: File) => {
-      setSendError(null);
-      await uploadRagMutation.mutateAsync(file);
-    },
-    [uploadRagMutation],
+    [],
   );
 
   const handleSend = useCallback(
-    async (message: string, attachments: File[], promptMode: PromptMode, ragDocId: string | null) => {
+    async (
+      message: string,
+      attachments: File[],
+      promptMode: PromptMode,
+      ragDocId: string | null,
+    ) => {
       setSendError(null);
       setIsSending(true);
       try {
@@ -185,7 +185,13 @@ export default function ChatPage() {
           setActiveThreadId(thread.id);
         }
 
-        await sendThroughMode(threadId, message, attachments, promptMode, ragDocId);
+        await sendThroughMode(
+          threadId,
+          message,
+          attachments,
+          promptMode,
+          ragDocId,
+        );
 
         await queryClient.invalidateQueries({ queryKey: ["thread", threadId] });
         await queryClient.invalidateQueries({ queryKey: ["threads"] });
@@ -199,6 +205,12 @@ export default function ChatPage() {
     },
     [activeThreadId, createThreadMutation, sendThroughMode, queryClient],
   );
+
+  if (meLoading) {
+    return (
+      <div className="grid min-h-screen place-items-center">Loading...</div>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-100">
@@ -253,7 +265,7 @@ export default function ChatPage() {
           <InputBar
             disabled={createThreadMutation.isPending || threadQuery.isLoading}
             mode={mode}
-            onModeChange={setMode}
+            onModeChange={handleModeChange}
             ragDocuments={ragDocsQuery.data ?? []}
             selectedRagDocId={selectedRagDocId}
             onSelectRagDoc={setSelectedRagDocId}

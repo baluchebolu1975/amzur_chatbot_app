@@ -90,6 +90,18 @@ def run():
     assert status == 200, "thread create failed"
     thread_id = thread["id"]
 
+    # Add regular chat history first to verify mixed-mode threads do not pollute RAG.
+    status, chat_reply = post_json(
+        opener,
+        "/api/chat/messages",
+        {
+            "thread_id": thread_id,
+            "message": "Give me a short list of cricket stadiums in India.",
+        },
+    )
+    assert status == 200, "chat message failed"
+    assert chat_reply["assistant_message"]["content"], "chat response missing"
+
     # Generate image with thread persistence
     status, image = post_json(
         opener,
@@ -123,16 +135,21 @@ def run():
     )
     assert status == 200, "RAG chat failed"
     assert "chroma" in rag_answer.lower() or "vector" in rag_answer.lower(), "RAG answer not grounded"
+    assert "cricket" not in rag_answer.lower(), "RAG answer leaked earlier chat context"
+    assert "cannot generate images" not in rag_answer.lower(), "RAG answer leaked unrelated image/chat text"
 
     # Read thread and validate persisted history
     status, details = get_json(opener, f"/api/chat/threads/{thread_id}")
     assert status == 200, "thread fetch failed"
     msgs = details["messages"]
 
-    # Expected at least: user prompt (image), assistant image, user rag q, assistant rag a
-    assert len(msgs) >= 4, f"expected >= 4 messages, got {len(msgs)}"
+    # Expected at least: chat user+assistant, image user+assistant, rag user+assistant
+    assert len(msgs) >= 6, f"expected >= 6 messages, got {len(msgs)}"
     assistant_image_msgs = [m for m in msgs if m["role"] == "assistant" and "data:image/" in m["content"]]
     assert assistant_image_msgs, "no persisted base64 image message found"
+    assert any("cricket stadiums" in m["content"].lower() for m in msgs), "chat history missing from persisted thread"
+    assert any("what vector database is used" in m["content"].lower() for m in msgs), "rag question missing from persisted thread"
+    assert any("chroma" in m["content"].lower() for m in msgs if m["role"] == "assistant"), "rag answer missing from persisted thread"
 
     print("=" * 60)
     print("UNIFIED SMOKE TEST PASSED")

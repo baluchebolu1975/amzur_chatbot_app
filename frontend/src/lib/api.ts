@@ -191,6 +191,25 @@ export async function generateImage(
   return response.data;
 }
 
+export interface DbQueryResponse {
+  question: string;
+  sql: string;
+  row_count: number;
+  rows: Array<Record<string, unknown>>;
+  answer: string;
+}
+
+export async function askDatabaseQuestion(
+  question: string,
+  threadId?: string,
+): Promise<DbQueryResponse> {
+  const response = await api.post("/db/query", {
+    question,
+    thread_id: threadId,
+  });
+  return response.data as DbQueryResponse;
+}
+
 // ─── RAG (PDF Chat) ────────────────────────────────────────────────────────
 
 export interface RagDocument {

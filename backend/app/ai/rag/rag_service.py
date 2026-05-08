@@ -22,6 +22,9 @@ from app.core.config import get_settings
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
+IMAGE_MARKDOWN_PREFIX = "![Generated image](data:image/"
+MAX_HISTORY_MESSAGE_CHARS = 2000
+MAX_HISTORY_TOTAL_CHARS = 12000
 
 SYSTEM_PROMPT = """You are a helpful AI assistant that answers questions based on
 provided document context.
@@ -41,6 +44,52 @@ def _build_context(chunks) -> str:
         page = doc.metadata.get("page", "?")
         parts.append(f"[Chunk {i} | Page {page}]\n{doc.page_content}")
     return "\n\n---\n\n".join(parts)
+
+
+def _is_generated_image_message(content: str) -> bool:
+    text = (content or "").strip()
+    return text.startswith(IMAGE_MARKDOWN_PREFIX) or text.startswith("data:image/")
+
+
+def _sanitize_history_message_content(content: str) -> str:
+    text = (content or "").strip()
+    if not text:
+        return ""
+    return text[:MAX_HISTORY_MESSAGE_CHARS]
+
+
+def _sanitize_conversation_history(conversation_history: list[dict] | None) -> list[dict]:
+    if not conversation_history:
+        return []
+
+    sanitized: list[dict] = []
+    total_chars = 0
+
+    for message in conversation_history[-10:]:
+        if not isinstance(message, dict):
+            continue
+
+        role = str(message.get("role", "")).strip().lower()
+        if role not in {"user", "assistant", "system"}:
+            continue
+
+        content = _sanitize_history_message_content(str(message.get("content", "")))
+        if not content or _is_generated_image_message(content):
+            continue
+
+        if total_chars + len(content) > MAX_HISTORY_TOTAL_CHARS:
+            remaining = MAX_HISTORY_TOTAL_CHARS - total_chars
+            if remaining <= 0:
+                break
+            content = content[:remaining]
+
+        sanitized.append({"role": role, "content": content})
+        total_chars += len(content)
+
+        if total_chars >= MAX_HISTORY_TOTAL_CHARS:
+            break
+
+    return sanitized
 
 
 async def stream_rag_answer(
@@ -71,8 +120,9 @@ async def stream_rag_answer(
         },
     ]
 
-    if conversation_history:
-        messages.extend(conversation_history[-10:])  # limit history to last 10 turns
+    sanitized_history = _sanitize_conversation_history(conversation_history)
+    if sanitized_history:
+        messages.extend(sanitized_history)
 
     messages.append({"role": "user", "content": question})
 

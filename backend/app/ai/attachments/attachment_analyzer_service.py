@@ -30,6 +30,7 @@ class AttachmentInsight:
 class AttachmentAnalyzerService:
     MAX_FILES = 8
     MAX_TEXT_SNIPPET_CHARS = 8000
+    MAX_IMAGE_ANALYSIS_BYTES = 3 * 1024 * 1024
 
     IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
     VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
@@ -195,6 +196,14 @@ class AttachmentAnalyzerService:
         return self._extract_text_payload(file_bytes)
 
     def _analyze_image(self, filename: str, content_type: str, file_bytes: bytes) -> str:
+        if len(file_bytes) > self.MAX_IMAGE_ANALYSIS_BYTES:
+            size_mb = round(len(file_bytes) / (1024 * 1024), 2)
+            max_mb = round(self.MAX_IMAGE_ANALYSIS_BYTES / (1024 * 1024), 2)
+            return (
+                f"Image is too large for vision prompt analysis ({size_mb}MB). "
+                f"Please upload an image up to {max_mb}MB for deep visual analysis."
+            )
+
         mime = content_type if content_type.startswith("image/") else "image/png"
         data_url = f"data:{mime};base64,{base64.b64encode(file_bytes).decode('utf-8')}"
 

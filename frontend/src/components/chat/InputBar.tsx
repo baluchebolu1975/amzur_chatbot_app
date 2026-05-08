@@ -2,7 +2,7 @@ import { type ChangeEvent, type FormEvent, useState } from "react";
 
 import type { RagDocument } from "../../lib/api";
 
-export type PromptMode = "chat" | "image" | "rag";
+export type PromptMode = "chat" | "image" | "rag" | "db";
 
 type InputBarProps = {
   disabled: boolean;
@@ -87,16 +87,31 @@ export function InputBar({
     event.target.value = "";
   };
 
-  const modeLabel =
-    mode === "chat" ? "Chat" : mode === "image" ? "Generate Image" : "Ask PDF";
+  const modeLabels: Record<PromptMode, string> = {
+    chat: "Chat",
+    image: "Generate Image",
+    rag: "Ask PDF",
+    db: "Database Insights",
+  };
+  const placeholders: Record<PromptMode, string> = {
+    chat: "Type your question and optionally attach files...",
+    image: "Describe the image you want to generate...",
+    rag: "Ask a question grounded in your selected PDF...",
+    db: "Ask about chat/image/RAG history in natural language...",
+  };
+  const modeLabel = modeLabels[mode];
 
   return (
     <form onSubmit={submit} className="border-t border-slate-200 bg-white p-4">
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <label
+          htmlFor="prompt-mode-select"
+          className="text-xs font-semibold uppercase tracking-wide text-slate-500"
+        >
           Mode
         </label>
         <select
+          id="prompt-mode-select"
           value={mode}
           onChange={(event) => onModeChange(event.target.value as PromptMode)}
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-700"
@@ -104,6 +119,7 @@ export function InputBar({
           <option value="chat">Chatbot</option>
           <option value="image">Generate Image</option>
           <option value="rag">RAG (PDF)</option>
+          <option value="db">DB Insights</option>
         </select>
 
         {mode === "rag" ? (
@@ -195,13 +211,7 @@ export function InputBar({
           value={message}
           onChange={(event) => setMessage(event.target.value)}
           className="h-20 flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-cyan-700"
-          placeholder={
-            mode === "chat"
-              ? "Type your question and optionally attach files..."
-              : mode === "image"
-                ? "Describe the image you want to generate..."
-                : "Ask a question grounded in your selected PDF..."
-          }
+          placeholder={placeholders[mode]}
         />
         <div className="flex flex-col gap-2">
           <label
