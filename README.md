@@ -93,9 +93,9 @@ flowchart LR
 - SQL validation and guardrails (SELECT-only + scoped filters)
 - Thread-aware DB Insights queries
 - Persisted DB Insights chat output containing:
-	- Natural language answer
-	- SQL query block
-	- SQL result preview
+  - Natural language answer
+  - SQL query block
+  - SQL result preview
 - Frontend DB Insights result rendering in HTML table format
 
 ## Tech Stack

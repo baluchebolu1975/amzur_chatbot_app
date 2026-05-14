@@ -14,9 +14,34 @@ import {
   type User,
 } from "../types";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ??
-  `${window.location.protocol}//${window.location.hostname}:8000/api`;
+function resolveApiBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  const fallback = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+
+  if (!configured) {
+    return fallback;
+  }
+
+  try {
+    const url = new URL(configured);
+    const isLocalApiHost =
+      url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    const isLocalBrowserHost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    // Keep local hosts consistent so auth cookies remain attached for /auth/me.
+    if (isLocalApiHost && isLocalBrowserHost) {
+      url.hostname = window.location.hostname;
+    }
+
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return configured;
+  }
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,

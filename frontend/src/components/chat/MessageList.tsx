@@ -100,97 +100,113 @@ export function MessageList({
     : messages;
 
   return (
-    <div className="flex-1 space-y-4 overflow-auto p-4">
-      {combined.map((message) => {
-        const dataUrl = extractDataUrlFromMarkdown(message.content);
-        const isImage = isDataImage(message.content);
-        const dbResultTable = parseDbResultTable(message.content);
-        const displayContent =
-          isImage && dataUrl
-            ? dataUrl
-            : (dbResultTable?.displayContent ?? message.content);
-        const tableColumns = dbResultTable
-          ? Array.from(
-              new Set(dbResultTable.rows.flatMap((row) => Object.keys(row))),
-            )
-          : [];
+    <div className="flex-1 space-y-4 overflow-auto p-6 slide-up">
+      {combined.length === 0 ? (
+        <div className="flex h-full items-center justify-center">
+          <div className="text-center text-slate-500">
+            <p className="text-2xl mb-2">💬</p>
+            <p className="text-sm">No messages yet. Start a conversation!</p>
+          </div>
+        </div>
+      ) : (
+        combined.map((message) => {
+          const isUserMessage = message.role === "user";
+          const dataUrl = extractDataUrlFromMarkdown(message.content);
+          const isImage = isDataImage(message.content);
+          const dbResultTable = parseDbResultTable(message.content);
+          const displayContent =
+            isImage && dataUrl
+              ? dataUrl
+              : (dbResultTable?.displayContent ?? message.content);
+          const tableColumns = dbResultTable
+            ? Array.from(
+                new Set(dbResultTable.rows.flatMap((row) => Object.keys(row))),
+              )
+            : [];
 
-        return (
-          <article
-            key={message.id}
-            className={`max-w-3xl rounded-2xl px-4 py-3 text-sm leading-7 shadow-sm ${
-              message.role === "user"
-                ? "ml-auto bg-cyan-800 text-white"
-                : "mr-auto bg-white text-slate-900"
-            }`}
-          >
-            <p className="mb-2 text-[11px] uppercase tracking-wide opacity-70">
-              {message.role}
-            </p>
-            <div className="text-justify [&_p]:my-2 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-slate-300 [&_pre]:bg-slate-50 [&_pre]:p-3 [&_pre]:text-slate-900 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:text-slate-900">
-              {isImage && dataUrl ? (
-                <img
-                  src={dataUrl}
-                  alt="Generated"
-                  className="max-h-96 rounded-lg border border-slate-200 object-contain"
-                />
-              ) : (
-                <>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                  >
-                    {displayContent}
-                  </ReactMarkdown>
-                  {dbResultTable ? (
-                    <div className="mt-3 overflow-x-auto rounded-lg border border-slate-300 bg-white">
-                      <table className="min-w-full border-collapse text-left text-xs">
-                        <thead className="bg-slate-100 text-slate-800">
-                          <tr>
-                            {tableColumns.map((column) => (
-                              <th
-                                key={column}
-                                className="border-b border-slate-300 px-3 py-2 font-semibold"
-                              >
-                                {column}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {dbResultTable.rows.map((row, rowIndex) => (
-                            <tr
-                              key={rowIndex}
-                              className="odd:bg-white even:bg-slate-50"
-                            >
+          return (
+            <article
+              key={message.id}
+              className={`slide-up max-w-2xl rounded-2xl px-5 py-4 text-sm leading-7 ${
+                isUserMessage
+                  ? "ml-auto bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-500/30"
+                  : "mr-auto border border-slate-200 bg-white/95 text-slate-800 shadow-lg shadow-slate-900/5"
+              }`}
+            >
+              <p className="mb-3 text-xs font-semibold uppercase tracking-widest opacity-70">
+                {isUserMessage ? "👤 You" : "🤖 Assistant"}
+              </p>
+              <div
+                className={`prose-sm max-w-none text-justify [&_p]:my-2 [&_h1]:text-lg [&_h1]:font-bold [&_h2]:text-base [&_h2]:font-bold [&_h3]:font-semibold [&_ol]:my-2 [&_ul]:my-2 [&_li]:my-1 [&_pre]:overflow-auto [&_pre]:rounded-xl [&_pre]:p-4 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_code]:rounded [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-xs [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:opacity-90 ${
+                  isUserMessage
+                    ? "prose-invert [&_pre]:border [&_pre]:border-white/20 [&_pre]:bg-slate-900/80 [&_pre]:text-slate-100 [&_code]:bg-white/20 [&_blockquote]:border-cyan-200"
+                    : "text-slate-800 [&_pre]:border [&_pre]:border-slate-200 [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_code]:bg-slate-100 [&_blockquote]:border-blue-400"
+                }`}
+              >
+                {isImage && dataUrl ? (
+                  <img
+                    src={dataUrl}
+                    alt="Generated"
+                    className="max-h-96 rounded-xl border border-slate-300/80 object-contain"
+                  />
+                ) : (
+                  <>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                    >
+                      {displayContent}
+                    </ReactMarkdown>
+                    {dbResultTable ? (
+                      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50">
+                        <table className="min-w-full border-collapse text-left text-xs">
+                          <thead className="bg-slate-200/70">
+                            <tr>
                               {tableColumns.map((column) => (
-                                <td
-                                  key={`${rowIndex}-${column}`}
-                                  className="max-w-[260px] border-b border-slate-200 px-3 py-2 align-top break-words text-slate-900"
+                                <th
+                                  key={column}
+                                  className="border-b border-slate-300 px-4 py-3 font-semibold text-slate-900"
                                 >
-                                  {formatCellValue(row[column])}
-                                </td>
+                                  {column}
+                                </th>
                               ))}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
-                </>
-              )}
-            </div>
-          </article>
-        );
-      })}
+                          </thead>
+                          <tbody>
+                            {dbResultTable.rows.map((row, rowIndex) => (
+                              <tr
+                                key={rowIndex}
+                                className="border-b border-slate-200 transition hover:bg-slate-50"
+                              >
+                                {tableColumns.map((column) => (
+                                  <td
+                                    key={`${rowIndex}-${column}`}
+                                    className="max-w-[260px] px-4 py-2 align-top break-words text-slate-900"
+                                  >
+                                    {formatCellValue(row[column])}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </article>
+          );
+        })
+      )}
       {isLoading && !streamingText ? (
-        <article className="mr-auto max-w-3xl rounded-2xl bg-white px-4 py-3 text-sm leading-7 text-slate-900 shadow-sm">
+        <article className="mr-auto max-w-3xl rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700 shadow-sm">
           <p className="mb-2 text-[11px] uppercase tracking-wide opacity-70">
             assistant
           </p>
           <div className="flex items-center gap-2">
             <svg
-              className="h-5 w-5 animate-spin text-cyan-700"
+              className="h-5 w-5 animate-spin text-blue-600"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"

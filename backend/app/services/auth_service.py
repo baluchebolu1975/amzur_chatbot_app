@@ -51,7 +51,10 @@ async def login_with_google_id_token(db: AsyncSession, token: str) -> tuple[User
     try:
         payload = id_token.verify_oauth2_token(token, google_requests.Request(), settings.GOOGLE_CLIENT_ID)
     except Exception as exc:
-        raise HTTPException(status_code=401, detail={"error": "unauthorized", "message": "Invalid Google token"}) from exc
+        message = "Invalid Google token"
+        if settings.ENVIRONMENT == "development":
+            message = f"Invalid Google token: {exc}"
+        raise HTTPException(status_code=401, detail={"error": "unauthorized", "message": message}) from exc
 
     email = payload.get("email")
     google_id = payload.get("sub")
