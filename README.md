@@ -76,7 +76,7 @@ flowchart LR
 - Thread CRUD support (create, list, rename, delete)
 - Auto thread title generation from the first user message in a new chat
 
-## Project Status (P1-P8)
+## Project Status (P1-P11)
 
 - P1: Core full-stack scaffold (FastAPI + React + DB connectivity)
 - P2: Authentication and session flow (email/password + cookie auth)
@@ -86,6 +86,9 @@ flowchart LR
 - P6: Image generation flow with base64 persistence in chat history
 - P7: RAG document upload, indexing, and grounded document chat
 - P8: DB Insights (natural language to SQL) with user-scoped safe query execution
+- P9: Dataframe agent flow for structured sheet-style querying
+- P10: Tic-Tac-Toe gameplay UI and backend route integration
+- P11: LLM-powered Tic-Tac-Toe agent strategy with guarded fallback logic
 
 ### P8 Enhancements Included
 
@@ -205,7 +208,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=480
 Create file: frontend/.env
 
 ```env
-VITE_API_BASE_URL=http://127.0.0.1:8000/api
+VITE_API_BASE_URL=http://127.0.0.1:8001/api
 VITE_GOOGLE_CLIENT_ID=replace_with_google_client_id
 ```
 
@@ -235,12 +238,12 @@ alembic upgrade head
 ```bash
 cd backend
 .\.venv\Scripts\Activate.ps1
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
 Backend health endpoint:
 
-- GET http://127.0.0.1:8000/api/health
+- GET http://127.0.0.1:8001/api/health
 
 ### 4) Frontend setup
 
@@ -302,7 +305,7 @@ When a new thread still has a default title (for example New Chat), the first us
 # Terminal 1: backend
 cd backend
 .\.venv\Scripts\Activate.ps1
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 
 # Terminal 2: frontend
 cd frontend
@@ -313,7 +316,7 @@ npm run dev
 
 ```powershell
 # Backend health
-python -c "import requests;print(requests.get('http://127.0.0.1:8000/api/health').status_code)"
+python -c "import requests;print(requests.get('http://127.0.0.1:8001/api/health').status_code)"
 ```
 
 Expected output: 200
