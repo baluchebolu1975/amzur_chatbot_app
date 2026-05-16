@@ -7,17 +7,20 @@ import { MessageList } from "../components/chat/MessageList";
 import { ThreadSidebar } from "../components/chat/ThreadSidebar";
 import { useAuthActions, useMe } from "../hooks/useAuth";
 import {
-  askDatabaseQuestion,
   createThread,
   generateImage,
   getThread,
   listRagDocuments,
   listThreads,
+  loadDataframeSheet,
+  queryDataframeSheet,
   sendMessage,
   streamMessageWithAttachments,
   streamRagAnswer,
+  uploadDataframeFile,
   uploadRagDocument,
 } from "../lib/api";
+import type { Message } from "../types";
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -27,10 +30,18 @@ export default function ChatPage() {
 
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
-  const [mode, setMode] = useState<PromptMode>("chat");
+  const [mode, setMode] = useState<PromptMode>("db");
   const [selectedRagDocId, setSelectedRagDocId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sheetMessagesByThread, setSheetMessagesByThread] = useState<
+    Record<string, Message[]>
+  >({});
+  // Tracks which thread sessions already have an uploaded file loaded
+  // so we don't overwrite user uploads with the default sheet on each message
+  const [uploadedSheetSessions, setUploadedSheetSessions] = useState<
+    Set<string>
+  >(new Set());
 
   const threadsQuery = useQuery({
     queryKey: ["threads"],
@@ -94,9 +105,41 @@ export default function ChatPage() {
     }
   }, [meError, navigate]);
 
-  const messages = useMemo(
-    () => threadQuery.data?.messages ?? [],
-    [threadQuery.data?.messages],
+  const messages = useMemo(() => {
+    const persistedMessages = threadQuery.data?.messages ?? [];
+    const sheetMessages = activeThreadId
+      ? (sheetMessagesByThread[activeThreadId] ?? [])
+      : [];
+
+    return [...persistedMessages, ...sheetMessages];
+  }, [activeThreadId, sheetMessagesByThread, threadQuery.data?.messages]);
+
+  const appendSheetMessages = useCallback(
+    (threadId: string, userPrompt: string, assistantReply: string) => {
+      const timestamp = new Date().toISOString();
+
+      setSheetMessagesByThread((prev) => ({
+        ...prev,
+        [threadId]: [
+          ...(prev[threadId] ?? []),
+          {
+            id: `sheet-user-${crypto.randomUUID()}`,
+            thread_id: threadId,
+            role: "user",
+            content: userPrompt,
+            created_at: timestamp,
+          },
+          {
+            id: `sheet-assistant-${crypto.randomUUID()}`,
+            thread_id: threadId,
+            role: "assistant",
+            content: assistantReply,
+            created_at: timestamp,
+          },
+        ],
+      }));
+    },
+    [],
   );
 
   const handleModeChange = useCallback((nextMode: PromptMode) => {
@@ -146,7 +189,52 @@ export default function ChatPage() {
       }
 
       if (promptMode === "db") {
-        await askDatabaseQuestion(message, threadId);
+        if (attachments.length > 0) {
+          const sheetAttachments = attachments.filter((file) =>
+            /\.(csv|xlsx|xls)$/i.test(file.name),
+          );
+
+          if (sheetAttachments.length === 0) {
+            throw new Error(
+              "Sheet Insights accepts only CSV/XLSX/XLS attachments.",
+            );
+          }
+
+          const uploadResult = await uploadDataframeFile(
+            threadId,
+            sheetAttachments[0],
+          );
+
+          if (uploadResult.error) {
+            throw new Error(uploadResult.error);
+          }
+
+          // Mark this thread as having an uploaded file so subsequent
+          // messages don't overwrite it with the default sheet
+          setUploadedSheetSessions((prev) => new Set([...prev, threadId]));
+
+          appendSheetMessages(
+            threadId,
+            `Loaded file: ${sheetAttachments[0].name}`,
+            `Loaded ${uploadResult.rows} rows from ${sheetAttachments[0].name}.`,
+          );
+        } else if (!uploadedSheetSessions.has(threadId)) {
+          // Only load default sheet if no custom file has been uploaded yet
+          await loadDataframeSheet(threadId);
+        }
+
+        const result = await queryDataframeSheet(
+          message || "Summarize the current spreadsheet data briefly.",
+          threadId,
+        );
+        if (result.error || !result.answer) {
+          throw new Error(result.error ?? "Sheet query failed");
+        }
+        appendSheetMessages(
+          threadId,
+          message || "Analyze loaded sheet",
+          result.answer,
+        );
         return;
       }
 
@@ -165,7 +253,7 @@ export default function ChatPage() {
       );
       setStreamingText("");
     },
-    [],
+    [appendSheetMessages, uploadedSheetSessions, setUploadedSheetSessions],
   );
 
   const handleSend = useCallback(
@@ -232,6 +320,14 @@ export default function ChatPage() {
               <p className="text-xs text-slate-500">{me?.email}</p>
             </div>
           </div>
+          <button
+            onClick={() => {
+              navigate("/tictactoe");
+            }}
+            className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-800 shadow-sm transition hover:bg-cyan-100"
+          >
+            Tic Tac Toe Agent
+          </button>
           <button
             onClick={async () => {
               await logoutMutation.mutateAsync();

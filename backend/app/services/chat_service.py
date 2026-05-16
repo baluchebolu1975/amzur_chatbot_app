@@ -1,6 +1,7 @@
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 import re
+from urllib.parse import quote_plus
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -23,6 +24,41 @@ settings = get_settings()
 DEFAULT_THREAD_TITLES = {"new chat", "new thread", "untitled", ""}
 IMAGE_MARKDOWN_PREFIX = "![Generated image](data:image/"
 MAX_HISTORY_MESSAGE_CHARS = 8000
+RESEARCH_KEYWORDS = {
+    "paper",
+    "papers",
+    "research",
+    "survey",
+    "arxiv",
+    "citation",
+    "citations",
+    "reference",
+    "references",
+    "literature",
+    "study",
+    "studies",
+    "referance",
+    "referances",
+    "refrence",
+    "refrences",
+}
+RESEARCH_PHRASES = {
+    "machine learning",
+    "deep learning",
+    "ai agent",
+    "ai agents",
+    "transformer",
+    "transformers",
+    "llm",
+    "large language model",
+    "large language models",
+}
+URL_PATTERN = re.compile(r"https?://[^\s<>)\]]+")
+MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(https?://[^)]+\)")
+REFERENCE_HEADER_PATTERN = re.compile(
+    r"^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*(references|reference|sources?)\s*(?:\*\*)?\s*:?\s*$",
+    re.IGNORECASE,
+)
 
 
 def _is_generated_image_message(content: str) -> bool:
@@ -35,6 +71,126 @@ def _sanitize_history_content(content: str) -> str:
     if len(text) <= MAX_HISTORY_MESSAGE_CHARS:
         return text
     return text[:MAX_HISTORY_MESSAGE_CHARS]
+
+
+def _is_research_query(message: str) -> bool:
+    lowered = (message or "").lower()
+    return any(keyword in lowered for keyword in RESEARCH_KEYWORDS) or any(
+        phrase in lowered for phrase in RESEARCH_PHRASES
+    )
+
+
+def _is_research_like_text(text: str) -> bool:
+    lowered = (text or "").lower()
+    if REFERENCE_HEADER_PATTERN.search(lowered):
+        return True
+    return any(keyword in lowered for keyword in RESEARCH_KEYWORDS) or any(
+        phrase in lowered for phrase in RESEARCH_PHRASES
+    )
+
+
+def _normalize_urls_to_markdown(text: str) -> str:
+    """Convert bare URLs outside code fences into markdown links."""
+    lines = (text or "").splitlines()
+    if not lines:
+        return text
+
+    normalized_lines: list[str] = []
+    in_code_block = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            normalized_lines.append(line)
+            continue
+
+        if in_code_block or MARKDOWN_LINK_PATTERN.search(line):
+            normalized_lines.append(line)
+            continue
+
+        def _replace_url(match: re.Match[str]) -> str:
+            url = match.group(0)
+            return f"[{url}]({url})"
+
+        normalized_lines.append(URL_PATTERN.sub(_replace_url, line))
+
+    return "\n".join(normalized_lines)
+
+
+def _append_reference_fallback(text: str, topic: str) -> str:
+    """Append reliable search links when a research response has no direct references."""
+    query = quote_plus((topic or "research papers").strip())
+    fallback_lines = [
+        "### References",
+        f"- [arXiv search results](https://arxiv.org/search/?query={query}&searchtype=all)",
+        f"- [Semantic Scholar search results](https://www.semanticscholar.org/search?q={query})",
+        f"- [Google Scholar search results](https://scholar.google.com/scholar?q={query})",
+        f"- [Crossref search results](https://search.crossref.org/?q={query})",
+        f"- [OpenAlex works search](https://api.openalex.org/works?search={query})",
+    ]
+
+    base = (text or "").rstrip()
+    if "### References" in base:
+        return base
+    return f"{base}\n\n" + "\n".join(fallback_lines)
+
+
+def _linkify_plain_references_with_arxiv(text: str) -> str:
+    """Convert plain reference lines under a References section into arXiv search links."""
+    content = (text or "")
+    if not content.strip():
+        return content
+
+    lines = content.splitlines()
+    linked_lines: list[str] = []
+    in_references = False
+
+    for line in lines:
+        stripped = line.strip()
+        lower = stripped.lower()
+
+        if REFERENCE_HEADER_PATTERN.match(stripped):
+            in_references = True
+            linked_lines.append(line)
+            continue
+
+        if in_references and stripped.startswith("### ") and lower != "### references":
+            in_references = False
+
+        if not in_references:
+            linked_lines.append(line)
+            continue
+
+        if not stripped:
+            linked_lines.append(line)
+            continue
+
+        if MARKDOWN_LINK_PATTERN.search(stripped):
+            linked_lines.append(line)
+            continue
+
+        if URL_PATTERN.search(stripped):
+            linked_lines.append(URL_PATTERN.sub(lambda m: f"[{m.group(0)}]({m.group(0)})", line))
+            continue
+
+        # Handle list markers like "-", "*", "1.", "[1]" before turning the entry into a search link.
+        prefix_match = re.match(r"^(\s*(?:[-*]|\d+\.|\[\d+\]))\s+(.*)$", line)
+        if prefix_match:
+            prefix = prefix_match.group(1)
+            title = prefix_match.group(2).strip().rstrip(".;")
+            if title:
+                query = quote_plus(title)
+                linked_lines.append(
+                    f"{prefix} [{title}](https://arxiv.org/search/?query={query}&searchtype=all)"
+                )
+                continue
+
+        # Non-list reference line fallback.
+        title = stripped.rstrip(".;")
+        query = quote_plus(title)
+        linked_lines.append(f"- [{title}](https://arxiv.org/search/?query={query}&searchtype=all)")
+
+    return "\n".join(linked_lines)
 
 
 def _derive_thread_title_from_message(message: str) -> str:
@@ -59,11 +215,19 @@ def _derive_thread_title_from_message(message: str) -> str:
 
 
 def _message_to_dict(message: Message) -> dict:
+    content = message.content
+    if message.role == "assistant":
+        # Ensure historical assistant responses also expose clickable links in the UI.
+        content = _normalize_urls_to_markdown(content)
+        content = _linkify_plain_references_with_arxiv(content)
+        if _is_research_like_text(content) and not MARKDOWN_LINK_PATTERN.search(content):
+            content = _append_reference_fallback(content, "research papers")
+
     return {
         "id": str(message.id),
         "thread_id": str(message.thread_id),
         "role": message.role,
-        "content": message.content,
+        "content": content,
         "created_at": message.created_at,
     }
 
@@ -147,6 +311,23 @@ async def stream_chat_response(
     effective_user_message = user_message
     if attachment_context:
         effective_user_message = f"{user_message}\n\n{attachment_context}"
+
+    if _is_research_query(user_message):
+        messages.insert(
+            0,
+            {
+                "role": "system",
+                "content": (
+                    "When the user asks for research papers, you MUST include a final section titled 'References'. "
+                    "In that section, provide at least 5 sources as markdown bullet links using this exact format: "
+                    "- [Paper title](https://...). "
+                    "Each reference must include a full HTTP/HTTPS URL and be from reliable sources (arXiv/DOI/publisher). "
+                    "Do not output non-clickable citations like '[1]' without links and do not invent URLs. "
+                    "If reliable links are unavailable, explicitly state: 'Reliable links unavailable.'"
+                ),
+            },
+        )
+
     messages.append({"role": "user", "content": effective_user_message})
 
     # ============ PROJECT 4: MEMORY WINDOW INTEGRATION ============
@@ -212,6 +393,13 @@ async def stream_chat_response(
     assistant_text = "".join(assistant_parts).strip()
     if not assistant_text:
         assistant_text = "I could not generate a response for this prompt."
+
+    assistant_text = _normalize_urls_to_markdown(assistant_text)
+    assistant_text = _linkify_plain_references_with_arxiv(assistant_text)
+
+    if _is_research_query(user_message) or _is_research_like_text(assistant_text):
+        if not MARKDOWN_LINK_PATTERN.search(assistant_text):
+            assistant_text = _append_reference_fallback(assistant_text, user_message)
 
     db.add(Message(thread_id=thread.id, role="assistant", content=assistant_text))
     thread.updated_at = datetime.now(timezone.utc)

@@ -15,8 +15,9 @@ import {
 } from "../types";
 
 function resolveApiBaseUrl(): string {
+  const browserLocation = globalThis.location;
   const configured = import.meta.env.VITE_API_BASE_URL as string | undefined;
-  const fallback = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+  const fallback = `${browserLocation.protocol}//${browserLocation.hostname}:8001/api`;
 
   if (!configured) {
     return fallback;
@@ -27,12 +28,12 @@ function resolveApiBaseUrl(): string {
     const isLocalApiHost =
       url.hostname === "localhost" || url.hostname === "127.0.0.1";
     const isLocalBrowserHost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
+      browserLocation.hostname === "localhost" ||
+      browserLocation.hostname === "127.0.0.1";
 
     // Keep local hosts consistent so auth cookies remain attached for /auth/me.
     if (isLocalApiHost && isLocalBrowserHost) {
-      url.hostname = window.location.hostname;
+      url.hostname = browserLocation.hostname;
     }
 
     return url.toString().replace(/\/$/, "");
@@ -42,7 +43,8 @@ function resolveApiBaseUrl(): string {
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
-
+const DATAFRAME_AGENT_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, "");
+const ESCAPED_NEWLINE_TOKEN = String.raw`\n`;
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
@@ -133,19 +135,21 @@ async function consumeSseResponse(
     buffer = events.pop() ?? "";
 
     for (const event of events) {
-      const lines = event.split("\n");
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) {
-          continue;
-        }
-        const payload = line.slice(6);
+      for (const payload of extractSsePayloads(event)) {
         if (payload === "[DONE]") {
           return;
         }
-        onChunk(payload.replace(/\\n/g, "\n"));
+        onChunk(payload.split(ESCAPED_NEWLINE_TOKEN).join("\n"));
       }
     }
   }
+}
+
+function extractSsePayloads(event: string): string[] {
+  return event
+    .split("\n")
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => line.slice(6));
 }
 
 export async function streamMessage(
@@ -224,6 +228,30 @@ export interface DbQueryResponse {
   answer: string;
 }
 
+export type TicTacToeCell = "" | "X" | "O";
+
+export interface TicTacToeMoveResponse {
+  board: TicTacToeCell[];
+  ai_move: number;
+  ai_reasoning: string;
+  move_source: "llm" | "fallback";
+  status: "in_progress" | "won" | "draw";
+  winner: "X" | "O" | null;
+}
+
+export interface DataframeLoadResponse {
+  session_id: string;
+  rows: number;
+  columns: string[];
+  sheet_title: string | null;
+  error: string | null;
+}
+
+export interface DataframeQueryResponse {
+  answer: string | null;
+  error: string | null;
+}
+
 export async function askDatabaseQuestion(
   question: string,
   threadId?: string,
@@ -233,6 +261,74 @@ export async function askDatabaseQuestion(
     thread_id: threadId,
   });
   return response.data as DbQueryResponse;
+}
+
+export async function requestTicTacToeAiMove(
+  board: TicTacToeCell[],
+  playerSymbol: "X" | "O" = "X",
+  aiSymbol: "X" | "O" = "O",
+): Promise<TicTacToeMoveResponse> {
+  const response = await api.post("/tictactoe/move", {
+    board,
+    player_symbol: playerSymbol,
+    ai_symbol: aiSymbol,
+  });
+  return response.data as TicTacToeMoveResponse;
+}
+
+export async function loadDataframeSheet(
+  sessionId: string,
+  forceReload = true,
+): Promise<DataframeLoadResponse> {
+  const response = await axios.post(
+    `${DATAFRAME_AGENT_BASE_URL}/df-agent/load-default-file`,
+    {
+      session_id: sessionId,
+      force_reload: forceReload,
+    },
+    {
+      withCredentials: true,
+    },
+  );
+
+  return response.data as DataframeLoadResponse;
+}
+
+export async function uploadDataframeFile(
+  sessionId: string,
+  file: File,
+): Promise<DataframeLoadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await axios.post(
+    `${DATAFRAME_AGENT_BASE_URL}/df-agent/upload-file?session_id=${encodeURIComponent(sessionId)}`,
+    formData,
+    {
+      withCredentials: true,
+      headers: { "Content-Type": "multipart/form-data" },
+    },
+  );
+
+  return response.data as DataframeLoadResponse;
+}
+
+export async function queryDataframeSheet(
+  question: string,
+  sessionId: string,
+): Promise<DataframeQueryResponse> {
+  const response = await axios.post(
+    `${DATAFRAME_AGENT_BASE_URL}/df-agent/query`,
+    {
+      question,
+      session_id: sessionId,
+    },
+    {
+      withCredentials: true,
+    },
+  );
+
+  return response.data as DataframeQueryResponse;
 }
 
 // ─── RAG (PDF Chat) ────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useMe } from "./hooks/useAuth";
 import ChatPage from "./pages/ChatPage";
 import LoginPage from "./pages/LoginPage";
+import TicTacToePage from "./pages/TicTacToePage";
 
 function ProtectedRoute({ children }: Readonly<{ children: ReactNode }>) {
   const { data, isLoading, isError } = useMe();
@@ -30,6 +31,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ChatPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/tictactoe"
+        element={
+          <ProtectedRoute>
+            <TicTacToePage />
           </ProtectedRoute>
         }
       />

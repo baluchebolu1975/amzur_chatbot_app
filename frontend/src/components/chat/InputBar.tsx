@@ -1,10 +1,10 @@
-import { type ChangeEvent, type FormEvent, useState } from "react";
+import { type ChangeEvent, useState } from "react";
 
 import type { RagDocument } from "../../lib/api";
 
 export type PromptMode = "chat" | "image" | "rag" | "db";
 
-type InputBarProps = {
+type InputBarProps = Readonly<{
   disabled: boolean;
   mode: PromptMode;
   onModeChange: (mode: PromptMode) => void;
@@ -20,7 +20,7 @@ type InputBarProps = {
     mode: PromptMode,
     ragDocId: string | null,
   ) => Promise<void>;
-};
+}>;
 
 export function InputBar({
   disabled,
@@ -52,15 +52,14 @@ export function InputBar({
     );
   };
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitPrompt = async () => {
     const trimmed = message.trim();
     const noMessage = !trimmed;
     const noAttachments = attachments.length === 0;
-    if (mode === "chat" && noMessage && noAttachments) {
+    if ((mode === "chat" || mode === "db") && noMessage && noAttachments) {
       return;
     }
-    if (mode !== "chat" && noMessage) {
+    if (mode !== "chat" && mode !== "db" && noMessage) {
       return;
     }
     if (mode === "rag" && !selectedRagDocId) {
@@ -78,6 +77,11 @@ export function InputBar({
     );
   };
 
+  const submit = (event: { preventDefault: () => void }) => {
+    event.preventDefault();
+    void submitPrompt();
+  };
+
   const onRagUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -91,13 +95,13 @@ export function InputBar({
     chat: "Chat",
     image: "Generate Image",
     rag: "Ask PDF",
-    db: "Database Insights",
+    db: "Sheet Insights",
   };
   const placeholders: Record<PromptMode, string> = {
     chat: "Type your question and optionally attach files...",
     image: "Describe the image you want to generate...",
     rag: "Ask a question grounded in your selected PDF...",
-    db: "Ask about chat/image/RAG history in natural language...",
+    db: "Attach CSV/XLSX or ask a question about the loaded spreadsheet data...",
   };
   const modeLabel = modeLabels[mode];
 
@@ -131,7 +135,7 @@ export function InputBar({
               📄 RAG (PDF)
             </option>
             <option value="db" className="bg-white text-slate-900">
-              🔍 DB Insights
+              📊 Sheet Insights
             </option>
           </select>
 
@@ -161,8 +165,8 @@ export function InputBar({
               <label className="cursor-pointer rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50">
                 {isUploadingRag ? (
                   <div className="flex items-center gap-2">
-                    <span className="spin-smooth inline-block h-4 w-4 rounded-full border-2 border-blue-200 border-t-blue-600"></span>
-                    Uploading...
+                    <span className="spin-smooth inline-block h-4 w-4 rounded-full border-2 border-blue-200 border-t-blue-600" />
+                    <span>Uploading...</span>
                   </div>
                 ) : (
                   "📤 Upload PDF"
@@ -220,16 +224,18 @@ export function InputBar({
         <div className="flex flex-col gap-2">
           <label
             className={`group cursor-pointer rounded-xl border border-slate-200 bg-white px-4 py-2 text-center text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900 ${
-              mode !== "chat" ? "pointer-events-none opacity-40" : ""
+              mode === "chat" || mode === "db"
+                ? ""
+                : "pointer-events-none opacity-40"
             }`}
           >
-            📎
+            <span>📎</span>
             <input
               type="file"
               multiple
               onChange={onFileChange}
               className="hidden"
-              disabled={mode !== "chat"}
+              disabled={mode !== "chat" && mode !== "db"}
               accept="image/*,video/*,.csv,.tsv,.xlsx,.xls,.tex,.latex,.md,.py,.js,.ts,.tsx,.jsx,.java,.go,.rs,.cpp,.c,.sql,.json,.yaml,.yml"
             />
           </label>
@@ -242,8 +248,8 @@ export function InputBar({
             <span className="relative flex items-center gap-2">
               {isSending ? (
                 <>
-                  <span className="spin-smooth inline-block h-4 w-4 rounded-full border-2 border-white/30 border-t-white"></span>
-                  Sending...
+                  <span className="spin-smooth inline-block h-4 w-4 rounded-full border-2 border-white/30 border-t-white" />
+                  <span>Sending...</span>
                 </>
               ) : (
                 <>➤ Send</>

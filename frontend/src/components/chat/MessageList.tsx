@@ -1,5 +1,7 @@
+import type { ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
 import type { Message } from "../../types";
@@ -14,6 +16,76 @@ type DbResultTable = {
   rows: Array<Record<string, unknown>>;
   displayContent: string;
 };
+
+const MARKDOWN_LINK_RE = /\[[^\]]+\]\(https?:\/\/[^)]+\)/i;
+const URL_RE = /https?:\/\/[^\s<>)\]]+/g;
+const REF_HEADER_RE =
+  /^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*(references|reference|sources?)\s*(?:\*\*)?\s*:?\s*$/i;
+
+function linkifyReferencesForDisplay(content: string): string {
+  if (!content.trim()) {
+    return content;
+  }
+
+  const lines = content.split("\n");
+  const out: string[] = [];
+  let inRefs = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (REF_HEADER_RE.test(trimmed)) {
+      inRefs = true;
+      out.push(line);
+      continue;
+    }
+
+    if (inRefs && trimmed.startsWith("### ") && !REF_HEADER_RE.test(trimmed)) {
+      inRefs = false;
+    }
+
+    if (!trimmed) {
+      out.push(line);
+      continue;
+    }
+
+    if (MARKDOWN_LINK_RE.test(line)) {
+      out.push(line);
+      continue;
+    }
+
+    if (URL_RE.test(line)) {
+      out.push(line.replace(URL_RE, (url) => `[${url}](${url})`));
+      continue;
+    }
+
+    if (!inRefs) {
+      out.push(line);
+      continue;
+    }
+
+    const match = line.match(/^(\s*(?:[-*]|\d+\.|\[\d+\]))\s+(.*)$/);
+    if (match) {
+      const prefix = match[1];
+      const title = match[2].trim().replace(/[.;]+$/, "");
+      if (title) {
+        const query = encodeURIComponent(title);
+        out.push(
+          `${prefix} [${title}](https://arxiv.org/search/?query=${query}&searchtype=all)`,
+        );
+        continue;
+      }
+    }
+
+    const title = trimmed.replace(/[.;]+$/, "");
+    const query = encodeURIComponent(title);
+    out.push(
+      `- [${title}](https://arxiv.org/search/?query=${query}&searchtype=all)`,
+    );
+  }
+
+  return out.join("\n");
+}
 
 function isDataImage(content: string): boolean {
   const trimmed = content.trim();
@@ -114,10 +186,11 @@ export function MessageList({
           const dataUrl = extractDataUrlFromMarkdown(message.content);
           const isImage = isDataImage(message.content);
           const dbResultTable = parseDbResultTable(message.content);
+          const normalizedContent = linkifyReferencesForDisplay(
+            dbResultTable?.displayContent ?? message.content,
+          );
           const displayContent =
-            isImage && dataUrl
-              ? dataUrl
-              : (dbResultTable?.displayContent ?? message.content);
+            isImage && dataUrl ? dataUrl : normalizedContent;
           const tableColumns = dbResultTable
             ? Array.from(
                 new Set(dbResultTable.rows.flatMap((row) => Object.keys(row))),
@@ -152,8 +225,26 @@ export function MessageList({
                 ) : (
                   <>
                     <ReactMarkdown
-                      remarkPlugins={[remarkMath]}
+                      remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[rehypeKatex]}
+                      components={{
+                        a: ({ href, className, children, ...props }) => {
+                          const anchorProps: ComponentPropsWithoutRef<"a"> = {
+                            ...props,
+                            href,
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                            className: [
+                              "font-medium text-blue-600 underline underline-offset-2 hover:text-blue-700 visited:text-blue-700 cursor-pointer",
+                              className,
+                            ]
+                              .filter(Boolean)
+                              .join(" "),
+                          };
+
+                          return <a {...anchorProps}>{children}</a>;
+                        },
+                      }}
                     >
                       {displayContent}
                     </ReactMarkdown>
