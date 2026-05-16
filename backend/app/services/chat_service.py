@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.models.message import Message
 from app.models.thread import Thread
 from app.models.user import User
+from app.services.mcp_agent_bridge import MCPAgentBridge
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -59,6 +60,7 @@ REFERENCE_HEADER_PATTERN = re.compile(
     r"^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*(references|reference|sources?)\s*(?:\*\*)?\s*:?\s*$",
     re.IGNORECASE,
 )
+ARXIV_ID_PATTERN = re.compile(r"\b\d{4}\.\d{4,5}(?:v\d+)?\b")
 
 
 def _is_generated_image_message(content: str) -> bool:
@@ -193,6 +195,35 @@ def _linkify_plain_references_with_arxiv(text: str) -> str:
     return "\n".join(linked_lines)
 
 
+def _extract_arxiv_links_from_text(text: str) -> list[str]:
+    """Extract unique arXiv abstract links from free-form MCP output text."""
+    links: list[str] = []
+    seen: set[str] = set()
+    for arxiv_id in ARXIV_ID_PATTERN.findall(text or ""):
+        url = f"https://arxiv.org/abs/{arxiv_id}"
+        if url not in seen:
+            seen.add(url)
+            links.append(url)
+    return links
+
+
+def _append_mcp_reference_links(text: str, urls: list[str]) -> str:
+    """Append clickable MCP links so users can open paper sources directly."""
+    if not urls:
+        return text
+
+    base = (text or "").rstrip()
+    missing = [url for url in urls if url not in base]
+    if not missing:
+        return base
+
+    lines = ["### MCP References"]
+    for url in missing:
+        lines.append(f"- [arXiv paper]({url})")
+
+    return f"{base}\n\n" + "\n".join(lines)
+
+
 def _derive_thread_title_from_message(message: str) -> str:
     """Create a concise thread title from the first user message."""
     cleaned = " ".join(message.strip().split())
@@ -312,6 +343,7 @@ async def stream_chat_response(
     if attachment_context:
         effective_user_message = f"{user_message}\n\n{attachment_context}"
 
+    mcp_reference_urls: list[str] = []
     if _is_research_query(user_message):
         messages.insert(
             0,
@@ -327,6 +359,26 @@ async def stream_chat_response(
                 ),
             },
         )
+
+        # Project 10 MCP bridge: keep prompt/UI stable while swapping tool backend.
+        try:
+            bridge = MCPAgentBridge()
+            mcp_context = await bridge.build_research_context(user_message, max_results=5)
+            if mcp_context:
+                mcp_reference_urls = _extract_arxiv_links_from_text(mcp_context)
+                messages.insert(
+                    1,
+                    {
+                        "role": "system",
+                        "content": (
+                            "Use the following MCP tool output as grounding data for research references. "
+                            "Prefer these sources over guessed citations.\n\n"
+                            f"{mcp_context}"
+                        ),
+                    },
+                )
+        except Exception as exc:
+            logger.warning("mcp_arxiv_bridge_failed", error=str(exc), thread_id=str(thread.id))
 
     messages.append({"role": "user", "content": effective_user_message})
 
@@ -396,6 +448,7 @@ async def stream_chat_response(
 
     assistant_text = _normalize_urls_to_markdown(assistant_text)
     assistant_text = _linkify_plain_references_with_arxiv(assistant_text)
+    assistant_text = _append_mcp_reference_links(assistant_text, mcp_reference_urls)
 
     if _is_research_query(user_message) or _is_research_like_text(assistant_text):
         if not MARKDOWN_LINK_PATTERN.search(assistant_text):

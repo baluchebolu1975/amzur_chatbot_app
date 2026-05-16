@@ -76,7 +76,7 @@ flowchart LR
 - Thread CRUD support (create, list, rename, delete)
 - Auto thread title generation from the first user message in a new chat
 
-## Project Status (P1-P11)
+## Project Status (P1-P12)
 
 - P1: Core full-stack scaffold (FastAPI + React + DB connectivity)
 - P2: Authentication and session flow (email/password + cookie auth)
@@ -89,6 +89,15 @@ flowchart LR
 - P9: Dataframe agent flow for structured sheet-style querying
 - P10: Tic-Tac-Toe gameplay UI and backend route integration
 - P11: LLM-powered Tic-Tac-Toe agent strategy with guarded fallback logic
+- P12: MCP-based arXiv research integration via `mcp_simple_arxiv` with tool discovery and enforced clickable references
+
+### P12 MCP Integration Included
+
+- Added MCP bridge service to connect backend chat flow with `mcp_simple_arxiv`
+- Automatic MCP tool discovery for search/details (`search_papers`/`get_paper_data` with compatibility fallbacks)
+- Research queries now receive MCP-grounded context before LLM generation
+- Strict server-side reference hardening for clickable arXiv links in assistant responses
+- No frontend UI contract changes required (plug-and-play tool backend swap)
 
 ### P8 Enhancements Included
 
