@@ -9,7 +9,7 @@
 [![Postgres](https://img.shields.io/badge/database-PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Last Commit](https://img.shields.io/github/last-commit/baluchebolu1975/amzur_chatbot_app)](https://github.com/baluchebolu1975/amzur_chatbot_app/commits/main)
 
-Amzur Chatbot App is a full-stack conversational AI platform with secure authentication, persistent chat threads, Google OAuth login, streaming assistant responses, and production-ready ticket triage integration.
+Amzur Chatbot App is a full-stack conversational AI platform with secure authentication, persistent chat threads, Google OAuth login, streaming assistant responses, and production-ready ticket triage integration with automated email notifications via n8n.
 
 ## Repo Landing Page
 
@@ -23,6 +23,7 @@ Production-ready internal chatbot platform focused on secure auth, persistent th
 - [Authentication Flow](#authentication-flow)
 - [Chat Features](#chat-features)
 - [Tickets Features (Project 13)](#tickets-features-project-13)
+- [n8n Ticket Notifier Workflow](#n8n-ticket-notifier-workflow)
 - [Smoke Test (Tickets + n8n)](#smoke-test-tickets--n8n)
 - [Troubleshooting](#common-troubleshooting)
 
@@ -32,6 +33,7 @@ Production-ready internal chatbot platform focused on secure auth, persistent th
 - API Routes: [backend/app/api/router.py](backend/app/api/router.py)
 - Chat Service: [backend/app/services/chat_service.py](backend/app/services/chat_service.py)
 - Tickets Route: [backend/app/api/routes/tickets.py](backend/app/api/routes/tickets.py)
+- Ticket Schema: [backend/app/schemas/ticket.py](backend/app/schemas/ticket.py)
 - n8n Tickets Service: [backend/app/services/n8n_service.py](backend/app/services/n8n_service.py)
 - Frontend Bootstrap: [frontend/src/main.tsx](frontend/src/main.tsx)
 - Chat Page: [frontend/src/pages/ChatPage.tsx](frontend/src/pages/ChatPage.tsx)
@@ -98,7 +100,7 @@ flowchart LR
 - P10: Tic-Tac-Toe gameplay UI and backend route integration
 - P11: LLM-powered Tic-Tac-Toe agent strategy with guarded fallback logic
 - P12: MCP-based arXiv research integration via `mcp_simple_arxiv` with tool discovery and enforced clickable references
-- P13: End-to-end ticket triage integration (FastAPI + n8n + Supabase + Tickets UI), including list/history and inline status update support
+- P13: End-to-end ticket triage integration (FastAPI + n8n + Supabase + Tickets UI), including list/history, inline status update, DB-first persistence, DB fallback on n8n timeout, and automated Gmail email notifications via n8n Ticket Notifier workflow
 
 ### P12 MCP Integration Included
 
@@ -329,16 +331,67 @@ When a new thread still has a default title (for example New Chat), the first us
 
 ### Tickets UI behavior
 
-- Tickets tab is available in the main app layout
+- Tickets tab is available in the main app layout alongside the Chatbot tab
 - Create form supports: user_email, issue, category, priority
-- My Tickets table renders persisted ticket history from database
-- Inline Edit flow updates ticket status from table rows
+- My Tickets table renders persisted ticket history from Supabase
+- Inline status editor updates ticket status from table rows
+- Status changes are reflected immediately in the UI via React Query invalidation
 
-### n8n workflow integration
+### Ticket creation (resilient flow)
 
-- Ticket creation endpoint forwards payload to n8n webhook
-- n8n performs normalization, triage, DB insert, and email notification
-- Backend parses n8n response and returns UI-ready payload
+- Backend forwards payload to n8n Ticket Triage webhook (POST /webhook/tickets)
+- n8n performs normalization, AI triage, and Supabase insert
+- If n8n times out or is unavailable, backend falls back to a direct Supabase INSERT
+- Ticket is never lost — either n8n or the fallback always persists the record
+- Response includes ticket ID and creation timestamp
+
+### Status update (DB-first flow)
+
+- Backend writes status to Supabase FIRST with `UPDATE ... RETURNING id, category, priority, updated_at`
+- DB commit succeeds before n8n is called — status is never lost on n8n timeout
+- Enriched status payload (ticket_id, user_email, status, category, priority, updated_at) is forwarded to n8n Ticket Notifier webhook
+- n8n Ticket Notifier sends a Gmail notification to the ticket owner
+
+## n8n Ticket Notifier Workflow
+
+### Workflow overview
+
+- **Trigger**: Webhook node — POST `https://<your-n8n>/webhook/ticket-status`
+- **Action**: Gmail node — sends an HTML email to the ticket owner on every status change
+- **Response mode**: Immediately (async) — n8n returns HTTP 200 instantly without waiting for Gmail
+
+### Gmail email template
+
+The Gmail node expects these fields from the webhook body (all sent by the backend):
+
+| Field | Source |
+|---|---|
+| `$json.body.ticket_id` | UUID from `tickets` table |
+| `$json.body.status` | New status (Open / In Progress / Resolved / Closed) |
+| `$json.body.user_email` | Ticket owner email |
+| `$json.body.category` | Ticket category from DB |
+| `$json.body.priority` | Ticket priority from DB |
+| `$json.body.updated_at` | Timestamp of the status update |
+
+> **Important**: Because the webhook uses async (Immediately) response mode, n8n wraps the POST body under `$json.body`. All Gmail template expressions must use `{{ $json.body.field_name }}` not `{{ $json.field_name }}`.
+
+### Recommended Gmail message body (HTML)
+
+```html
+<h2>Your Ticket Has Been Updated</h2>
+<p><b>Ticket ID:</b> {{ $json.body.ticket_id }}</p>
+<p><b>Status:</b> {{ $json.body.status }}</p>
+<p><b>Category:</b> {{ $json.body.category }}</p>
+<p><b>Priority:</b> {{ $json.body.priority }}</p>
+<p><b>Updated At:</b> {{ $json.body.updated_at }}</p>
+```
+
+### n8n environment variables required
+
+```env
+N8N_WEBHOOK_URL=https://your-n8n-domain/webhook/tickets
+N8N_STATUS_WEBHOOK_URL=https://your-n8n-domain/webhook/ticket-status
+```
 
 ## Smoke Test (Tickets + n8n)
 
