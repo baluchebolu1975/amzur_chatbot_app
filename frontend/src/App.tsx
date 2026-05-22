@@ -2,8 +2,8 @@ import { type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { useMe } from "./hooks/useAuth";
-import ChatPage from "./pages/ChatPage";
 import LoginPage from "./pages/LoginPage";
+import MainLayout from "./pages/MainLayout";
 import TicTacToePage from "./pages/TicTacToePage";
 
 function ProtectedRoute({ children }: Readonly<{ children: ReactNode }>) {
@@ -30,7 +30,7 @@ export default function App() {
         path="/chat"
         element={
           <ProtectedRoute>
-            <ChatPage />
+            <MainLayout />
           </ProtectedRoute>
         }
       />

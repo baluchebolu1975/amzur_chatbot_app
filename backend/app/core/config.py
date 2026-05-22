@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = 100
     UPLOAD_DIR: str = "./uploads"
 
+    N8N_WEBHOOK_URL: Optional[str] = None
+    N8N_API_KEY: Optional[str] = None
+    N8N_STATUS_WEBHOOK_URL: Optional[str] = None
+
     FRONTEND_ORIGIN: str = "http://localhost:5173"
     COOKIE_NAME: str = "amzur_access_token"
     ACCESS_TOKEN_ALGORITHM: str = "HS256"
