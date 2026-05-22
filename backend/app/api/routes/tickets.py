@@ -1,5 +1,6 @@
 """Routes for ticket management."""
 import logging
+import uuid as uuid_lib
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -28,7 +29,7 @@ n8n_service = N8nService()
     status_code=status.HTTP_201_CREATED,
     responses={400: {"model": ErrorResponse}, 502: {"model": ErrorResponse}},
 )
-async def create_ticket(ticket_request: TicketRequest) -> TicketResponse:
+async def create_ticket(ticket_request: TicketRequest, db: AsyncSession = Depends(get_db)) -> TicketResponse:
     """
     Create a new ticket via n8n Triage Sidecar.
     
@@ -65,18 +66,44 @@ async def create_ticket(ticket_request: TicketRequest) -> TicketResponse:
             detail="Issue description must be at least 10 characters",
         )
 
-    # Send to n8n
+    # Attempt n8n triage workflow
     response = await n8n_service.send_ticket(ticket_request)
 
-    if response.status == "error":
-        logger.error(f"n8n ticket creation failed: {response.message}")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=response.message,
-        )
+    if response.status != "error":
+        logger.info(f"Ticket created via n8n: {response.ticket_id}")
+        return response
 
-    logger.info(f"Ticket created successfully: {response.ticket_id}")
-    return response
+    # n8n failed/timed out — write directly to DB so the user never sees a 502
+    logger.warning(f"n8n unavailable ({response.message}); writing ticket directly to DB")
+
+    ticket_id_text = f"TKT-{str(uuid_lib.uuid4())[:8].upper()}"
+    result = await db.execute(
+        text(
+            """
+            INSERT INTO public.tickets (ticket_id, user_email, issue, category, priority, status)
+            VALUES (:ticket_id, :user_email, :issue, :category, :priority, 'open')
+            RETURNING id, created_at
+            """
+        ),
+        {
+            "ticket_id": ticket_id_text,
+            "user_email": ticket_request.user_email,
+            "issue": ticket_request.issue,
+            "category": ticket_request.category.capitalize(),
+            "priority": ticket_request.priority,
+        },
+    )
+    await db.commit()
+    row = result.mappings().first()
+
+    logger.info(f"Ticket written directly to DB: {ticket_id_text} (id={row['id']})")
+    return TicketResponse(
+        status="success",
+        ticket_id=row["id"],
+        message="Ticket received. AI triage will process shortly.",
+        created_at=row["created_at"],
+        email_status="pending",
+    )
 
 
 @router.get("", response_model=list[TicketListItem], status_code=status.HTTP_200_OK)

@@ -19,8 +19,8 @@ class N8nService:
         self.webhook_url = settings.N8N_WEBHOOK_URL
         self.status_webhook_url = settings.N8N_STATUS_WEBHOOK_URL
         self.api_key = settings.N8N_API_KEY
-        self.timeout = 10.0
-        self.max_retries = 2
+        self.timeout = 25.0
+        self.max_retries = 1
 
     async def send_ticket(self, ticket_request: TicketRequest) -> TicketResponse:
         """
