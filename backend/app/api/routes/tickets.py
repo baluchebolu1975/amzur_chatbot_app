@@ -244,7 +244,7 @@ async def update_ticket_status(
             UPDATE public.tickets
             SET status = :status, updated_at = NOW()
             WHERE id = :ticket_id
-            RETURNING id
+            RETURNING id, category, priority, updated_at
             """
         ),
         {"status": db_status, "ticket_id": str(ticket_id)},
@@ -258,7 +258,13 @@ async def update_ticket_status(
             detail=f"Ticket {ticket_id} not found",
         )
 
+    row = update_result.mappings().first()
     logger.info(f"Ticket {ticket_id} status persisted to DB as '{db_status}'")
+
+    # Enrich status_update with DB fields the n8n Gmail template needs
+    status_update.category = row["category"]
+    status_update.priority = row["priority"]
+    status_update.updated_at = str(row["updated_at"])
 
     # Send to n8n
     response = await n8n_service.update_ticket_status(status_update)

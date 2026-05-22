@@ -60,6 +60,9 @@ class TicketStatusUpdate(BaseModel):
         ..., description="New ticket status"
     )
     user_email: EmailStr = Field(..., description="User email for notification")
+    category: Optional[str] = Field(default=None, description="Ticket category")
+    priority: Optional[str] = Field(default=None, description="Ticket priority")
+    updated_at: Optional[str] = Field(default=None, description="Updated timestamp")
 
 
 class TicketStatusResponse(BaseModel):

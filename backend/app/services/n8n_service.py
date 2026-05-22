@@ -122,6 +122,9 @@ class N8nService:
             "ticket_id": str(status_update.ticket_id),
             "user_email": status_update.user_email,
             "status": status_update.status,
+            "category": getattr(status_update, "category", "") or "",
+            "priority": getattr(status_update, "priority", "") or "",
+            "updated_at": getattr(status_update, "updated_at", "") or "",
         }
 
         for attempt in range(self.max_retries):
