@@ -9,7 +9,7 @@
 [![Postgres](https://img.shields.io/badge/database-PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Last Commit](https://img.shields.io/github/last-commit/baluchebolu1975/amzur_chatbot_app)](https://github.com/baluchebolu1975/amzur_chatbot_app/commits/main)
 
-Amzur Chatbot App is a full-stack conversational AI platform with secure authentication, persistent chat threads, Google OAuth login, and streaming assistant responses.
+Amzur Chatbot App is a full-stack conversational AI platform with secure authentication, persistent chat threads, Google OAuth login, streaming assistant responses, and production-ready ticket triage integration.
 
 ## Repo Landing Page
 
@@ -22,6 +22,8 @@ Production-ready internal chatbot platform focused on secure auth, persistent th
 - [Local Setup](#local-setup)
 - [Authentication Flow](#authentication-flow)
 - [Chat Features](#chat-features)
+- [Tickets Features (Project 13)](#tickets-features-project-13)
+- [Smoke Test (Tickets + n8n)](#smoke-test-tickets--n8n)
 - [Troubleshooting](#common-troubleshooting)
 
 ### Primary Entry Points
@@ -29,8 +31,11 @@ Production-ready internal chatbot platform focused on secure auth, persistent th
 - Backend App: [backend/app/main.py](backend/app/main.py)
 - API Routes: [backend/app/api/router.py](backend/app/api/router.py)
 - Chat Service: [backend/app/services/chat_service.py](backend/app/services/chat_service.py)
+- Tickets Route: [backend/app/api/routes/tickets.py](backend/app/api/routes/tickets.py)
+- n8n Tickets Service: [backend/app/services/n8n_service.py](backend/app/services/n8n_service.py)
 - Frontend Bootstrap: [frontend/src/main.tsx](frontend/src/main.tsx)
 - Chat Page: [frontend/src/pages/ChatPage.tsx](frontend/src/pages/ChatPage.tsx)
+- Tickets Page: [frontend/src/pages/TicketsPage.tsx](frontend/src/pages/TicketsPage.tsx)
 
 ## Architecture Diagram
 
@@ -75,8 +80,11 @@ flowchart LR
 - Streaming AI responses via Server-Sent Events (SSE)
 - Thread CRUD support (create, list, rename, delete)
 - Auto thread title generation from the first user message in a new chat
+- Tickets tab in UI with create, list/history, and status update actions
+- n8n sidecar integration for ticket triage and confirmation emails
+- Supabase-backed ticket history rendering in the Tickets table
 
-## Project Status (P1-P12)
+## Project Status (P1-P13)
 
 - P1: Core full-stack scaffold (FastAPI + React + DB connectivity)
 - P2: Authentication and session flow (email/password + cookie auth)
@@ -90,6 +98,7 @@ flowchart LR
 - P10: Tic-Tac-Toe gameplay UI and backend route integration
 - P11: LLM-powered Tic-Tac-Toe agent strategy with guarded fallback logic
 - P12: MCP-based arXiv research integration via `mcp_simple_arxiv` with tool discovery and enforced clickable references
+- P13: End-to-end ticket triage integration (FastAPI + n8n + Supabase + Tickets UI), including list/history and inline status update support
 
 ### P12 MCP Integration Included
 
@@ -206,6 +215,10 @@ GOOGLE_SERVICE_ACCOUNT_JSON=
 MAX_UPLOAD_MB=20
 UPLOAD_DIR=./uploads
 
+N8N_WEBHOOK_URL=https://your-n8n-domain/webhook/tickets
+N8N_STATUS_WEBHOOK_URL=https://your-n8n-domain/webhook/ticket-status
+N8N_API_KEY=
+
 FRONTEND_ORIGIN=http://127.0.0.1:5173
 COOKIE_NAME=amzur_access_token
 ACCESS_TOKEN_ALGORITHM=HS256
@@ -305,6 +318,44 @@ Google Cloud setup must include authorized JavaScript origins such as:
 ### Auto title behavior
 
 When a new thread still has a default title (for example New Chat), the first user message automatically updates the thread title based on that message subject.
+
+## Tickets Features (Project 13)
+
+### Tickets APIs
+
+- POST /api/tickets -> Create a support ticket via n8n triage sidecar
+- GET /api/tickets -> List ticket history for Tickets UI table
+- PUT /api/tickets/{ticket_id}/status -> Update ticket status (Open/In Progress/Resolved/Closed)
+
+### Tickets UI behavior
+
+- Tickets tab is available in the main app layout
+- Create form supports: user_email, issue, category, priority
+- My Tickets table renders persisted ticket history from database
+- Inline Edit flow updates ticket status from table rows
+
+### n8n workflow integration
+
+- Ticket creation endpoint forwards payload to n8n webhook
+- n8n performs normalization, triage, DB insert, and email notification
+- Backend parses n8n response and returns UI-ready payload
+
+## Smoke Test (Tickets + n8n)
+
+Use the integration smoke script to validate health, ticket creation, direct webhook behavior, and response formatting.
+
+```bash
+cd backend
+.\.venv\Scripts\Activate.ps1
+python smoke_test_integration.py
+```
+
+Expected scope:
+
+- Backend health endpoint is reachable
+- Ticket creation endpoint returns HTTP 201 for valid payloads
+- n8n webhook responds with required fields
+- Tickets are persisted and visible in Tickets UI
 
 ## Runbook
 
