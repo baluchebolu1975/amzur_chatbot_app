@@ -187,7 +187,7 @@ async def list_tickets(
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 502: {"model": ErrorResponse}},
 )
 async def update_ticket_status(
-    ticket_id: UUID, status_update: TicketStatusUpdate
+    ticket_id: UUID, status_update: TicketStatusUpdate, db: AsyncSession = Depends(get_db)
 ) -> TicketStatusResponse:
     """
     Update ticket status and send notification email.
@@ -227,6 +227,38 @@ async def update_ticket_status(
 
     # Update ticket_id from URL param
     status_update.ticket_id = ticket_id
+
+    # Map UI status values to DB format
+    db_status_map = {
+        "Open": "open",
+        "In Progress": "in progress",
+        "Resolved": "resolved",
+        "Closed": "closed",
+    }
+    db_status = db_status_map.get(status_update.status, status_update.status.lower())
+
+    # Always persist the status change to DB first — this must never fail
+    update_result = await db.execute(
+        text(
+            """
+            UPDATE public.tickets
+            SET status = :status, updated_at = NOW()
+            WHERE id = :ticket_id
+            RETURNING id
+            """
+        ),
+        {"status": db_status, "ticket_id": str(ticket_id)},
+    )
+    await db.commit()
+
+    if update_result.rowcount == 0:
+        logger.warning(f"Ticket not found: {ticket_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket {ticket_id} not found",
+        )
+
+    logger.info(f"Ticket {ticket_id} status persisted to DB as '{db_status}'")
 
     # Send to n8n
     response = await n8n_service.update_ticket_status(status_update)
